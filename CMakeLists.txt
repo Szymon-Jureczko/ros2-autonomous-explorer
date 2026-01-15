@@ -3,6 +3,10 @@ project(autonomous_explorer)
 
 find_package(ament_cmake REQUIRED)
 
+# Install Gazebo world
+install(DIRECTORY worlds
+  DESTINATION share/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
