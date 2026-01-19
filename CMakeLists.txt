@@ -3,8 +3,8 @@ project(autonomous_explorer)
 
 find_package(ament_cmake REQUIRED)
 
-# Install Gazebo world
-install(DIRECTORY worlds
+# Install launch files and world
+install(DIRECTORY launch worlds
   DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
