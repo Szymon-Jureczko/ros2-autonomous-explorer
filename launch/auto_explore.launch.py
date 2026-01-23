@@ -1,5 +1,5 @@
 """
-auto_explore.launch.py — Bring up Gazebo and the ros_gz bridge.
+auto_explore.launch.py — Gazebo + bridge + static TF publishers.
 """
 
 import os
@@ -40,4 +40,17 @@ def generate_launch_description():
         ]
     )
 
-    return LaunchDescription([gz_sim, bridge])
+    # Static TF: chassis -> lidar (sensor mounted on chassis)
+    tf_lidar = Node(package='tf2_ros', executable='static_transform_publisher',
+                    arguments=['0.21', '0', '0.3', '0', '0', '0', 'chassis', 'lidar'],
+                    parameters=[{'use_sim_time': True}])
+    # Static TF: base_link -> chassis
+    tf_base = Node(package='tf2_ros', executable='static_transform_publisher',
+                   arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'chassis'],
+                   parameters=[{'use_sim_time': True}])
+    # Static TF: base_link -> base_footprint
+    tf_footprint = Node(package='tf2_ros', executable='static_transform_publisher',
+                        arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'base_footprint'],
+                        parameters=[{'use_sim_time': True}])
+
+    return LaunchDescription([gz_sim, bridge, tf_lidar, tf_base, tf_footprint])
