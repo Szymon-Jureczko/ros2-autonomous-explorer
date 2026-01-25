@@ -3,8 +3,8 @@ project(autonomous_explorer)
 
 find_package(ament_cmake REQUIRED)
 
-# Install launch files and world
-install(DIRECTORY launch worlds
+# Install launch files, configs, and world
+install(DIRECTORY launch config worlds
   DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)

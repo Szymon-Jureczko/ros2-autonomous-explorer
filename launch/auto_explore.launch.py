@@ -1,5 +1,5 @@
 """
-auto_explore.launch.py — Gazebo + bridge + static TF publishers.
+auto_explore.launch.py — Gazebo + bridge + static TFs + SLAM Toolbox.
 """
 
 import os
@@ -13,8 +13,10 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
     pkg_autonomous_explorer = get_package_share_directory('autonomous_explorer')
+    pkg_slam_toolbox = get_package_share_directory('slam_toolbox')
 
     world_file = os.path.join(pkg_autonomous_explorer, 'worlds', 'robot_world.sdf')
+    slam_params_file = os.path.join(pkg_autonomous_explorer, 'config', 'slam_params.yaml')
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -40,17 +42,29 @@ def generate_launch_description():
         ]
     )
 
-    # Static TF: chassis -> lidar (sensor mounted on chassis)
     tf_lidar = Node(package='tf2_ros', executable='static_transform_publisher',
                     arguments=['0.21', '0', '0.3', '0', '0', '0', 'chassis', 'lidar'],
                     parameters=[{'use_sim_time': True}])
-    # Static TF: base_link -> chassis
     tf_base = Node(package='tf2_ros', executable='static_transform_publisher',
                    arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'chassis'],
                    parameters=[{'use_sim_time': True}])
-    # Static TF: base_link -> base_footprint
     tf_footprint = Node(package='tf2_ros', executable='static_transform_publisher',
                         arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'base_footprint'],
                         parameters=[{'use_sim_time': True}])
 
-    return LaunchDescription([gz_sim, bridge, tf_lidar, tf_base, tf_footprint])
+    # SLAM Toolbox (online async) — wait for /scan + /tf
+    slam = TimerAction(
+        period=10.0,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(pkg_slam_toolbox, 'launch', 'online_async_launch.py')),
+                launch_arguments={
+                    'use_sim_time': 'true',
+                    'slam_params_file': slam_params_file,
+                }.items()
+            )
+        ]
+    )
+
+    return LaunchDescription([gz_sim, bridge, tf_lidar, tf_base, tf_footprint, slam])

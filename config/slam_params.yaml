@@ -1,0 +1,26 @@
+# SLAM Toolbox (online async) parameters for real-time map building.
+slam_toolbox:
+  ros__parameters:
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan
+    use_sim_time: true
+
+    # TF publishing rate and buffer
+    transform_publish_period: 0.02
+    tf_buffer_duration: 30.0
+
+    # Process first scan immediately (no movement required)
+    minimum_travel_distance: 0.0
+    minimum_travel_heading: 0.0
+
+    # Map grid and sensor range
+    resolution: 0.05
+    max_laser_range: 8.0
+
+    mode: mapping
+    debug_logging: false
+    throttle_scans: 1
+    map_update_interval: 2.0
+    map_start_at_dock: true
