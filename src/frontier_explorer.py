@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Frontier Explorer — skeleton: subscribe to /map and look up robot pose via TF."""
+"""Frontier Explorer — detect frontier cells (FREE adjacent to UNKNOWN)."""
+
+import numpy as np
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
+
+
+FREE = 0
+UNKNOWN = -1
+LETHAL = 100
 
 
 class FrontierExplorer(Node):
@@ -54,9 +61,22 @@ class FrontierExplorer(Node):
             self.get_logger().warn('Cannot get robot position from TF, skipping.')
             return
         self.robot_pose = pos
-        self.get_logger().info(
-            f'Map: {self.slam_map.info.width}x{self.slam_map.info.height}, '
-            f'robot at ({pos[0]:.2f}, {pos[1]:.2f})')
+
+        cells = self._find_frontier_cells()
+        self.get_logger().info(f'Detected {len(cells)} frontier cells')
+
+    def _find_frontier_cells(self):
+        cm = self.slam_map
+        w, h = cm.info.width, cm.info.height
+        data = np.array(cm.data, dtype=np.int8).reshape((h, w))
+
+        frontier_mask = np.zeros((h, w), dtype=bool)
+        for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            shifted = np.roll(np.roll(data, dy, axis=0), dx, axis=1)
+            frontier_mask |= (data == FREE) & (shifted == UNKNOWN)
+
+        rows, cols = np.where(frontier_mask)
+        return list(zip(rows.tolist(), cols.tolist()))
 
 
 def main(args=None):
