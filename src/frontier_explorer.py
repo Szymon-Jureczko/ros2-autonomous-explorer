@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Frontier Explorer — detect + cluster frontier cells via BFS."""
+"""Frontier Explorer — detect + cluster + score by size/distance ratio."""
 
+import math
 from collections import deque
 import numpy as np
 
@@ -67,7 +68,17 @@ class FrontierExplorer(Node):
         self.robot_pose = pos
 
         clusters = self._find_frontiers()
-        self.get_logger().info(f'Found {len(clusters)} frontier cluster(s)')
+        if not clusters:
+            self.get_logger().info('No frontiers detected')
+            return
+
+        goal = self._select_frontier(clusters)
+        if goal is None:
+            self.get_logger().info('No suitable frontier goal')
+            return
+        self.get_logger().info(
+            f'Best frontier at ({goal[0]:.2f}, {goal[1]:.2f}) '
+            f'(of {len(clusters)} clusters)')
 
     def _find_frontiers(self):
         cm = self.slam_map
@@ -113,6 +124,20 @@ class FrontierExplorer(Node):
                 clusters.append(cluster)
 
         return clusters
+
+    def _select_frontier(self, frontiers):
+        rx, ry = self.robot_pose
+        best = None
+        best_score = -1.0
+        for frontier in frontiers:
+            cx = sum(p[0] for p in frontier) / len(frontier)
+            cy = sum(p[1] for p in frontier) / len(frontier)
+            dist = math.hypot(cx - rx, cy - ry)
+            score = len(frontier) / (dist + 0.1)
+            if score > best_score:
+                best_score = score
+                best = (cx, cy)
+        return best
 
 
 def main(args=None):
