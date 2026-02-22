@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Frontier Explorer — detect + cluster + score by size/distance ratio."""
+"""Frontier Explorer — Nav2 integration: send NavigateToPose goals."""
 
 import math
 from collections import deque
@@ -7,9 +7,12 @@ import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
+from nav2_msgs.action import NavigateToPose
+from geometry_msgs.msg import PoseStamped
 
 
 FREE = 0
@@ -17,6 +20,7 @@ UNKNOWN = -1
 LETHAL = 100
 
 MIN_FRONTIER_SIZE = 3
+REPLAN_INTERVAL = 4.0
 
 
 class FrontierExplorer(Node):
@@ -24,10 +28,13 @@ class FrontierExplorer(Node):
         super().__init__('frontier_explorer')
 
         self.declare_parameter('min_frontier_size', MIN_FRONTIER_SIZE)
+        self.declare_parameter('replan_interval', REPLAN_INTERVAL)
         self.min_frontier_size = self.get_parameter('min_frontier_size').value
+        self.replan_interval = self.get_parameter('replan_interval').value
 
         self.slam_map = None
         self.robot_pose = None
+        self.navigating = False
 
         map_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -42,7 +49,12 @@ class FrontierExplorer(Node):
         self.tf_listener = None
         self._setup_tf()
 
-        self.timer = self.create_timer(3.0, self._tick)
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.get_logger().info('Waiting for Nav2 navigate_to_pose action server...')
+        self.nav_client.wait_for_server()
+        self.get_logger().info('Nav2 action server connected!')
+
+        self.timer = self.create_timer(self.replan_interval, self._explore_tick)
 
     def _setup_tf(self):
         from tf2_ros import Buffer, TransformListener
@@ -59,13 +71,17 @@ class FrontierExplorer(Node):
     def _map_cb(self, msg: OccupancyGrid):
         self.slam_map = msg
 
-    def _tick(self):
+    def _explore_tick(self):
         if self.slam_map is None:
             return
         pos = self._get_robot_position()
         if pos is None:
             return
         self.robot_pose = pos
+
+        if self.navigating:
+            self.get_logger().info('Navigation in progress, waiting...')
+            return
 
         clusters = self._find_frontiers()
         if not clusters:
@@ -74,11 +90,8 @@ class FrontierExplorer(Node):
 
         goal = self._select_frontier(clusters)
         if goal is None:
-            self.get_logger().info('No suitable frontier goal')
             return
-        self.get_logger().info(
-            f'Best frontier at ({goal[0]:.2f}, {goal[1]:.2f}) '
-            f'(of {len(clusters)} clusters)')
+        self._send_goal(goal)
 
     def _find_frontiers(self):
         cm = self.slam_map
@@ -138,6 +151,37 @@ class FrontierExplorer(Node):
                 best_score = score
                 best = (cx, cy)
         return best
+
+    def _send_goal(self, goal_xy):
+        x, y = goal_xy
+        rx, ry = self.robot_pose
+        yaw = math.atan2(y - ry, x - rx)
+        qz = math.sin(yaw / 2.0)
+        qw = math.cos(yaw / 2.0)
+
+        self.get_logger().info(f'Navigating to frontier at ({x:.2f}, {y:.2f})')
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = PoseStamped()
+        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.pose.position.x = x
+        goal_msg.pose.pose.position.y = y
+        goal_msg.pose.pose.orientation.z = qz
+        goal_msg.pose.pose.orientation.w = qw
+
+        self.navigating = True
+        future = self.nav_client.send_goal_async(goal_msg)
+        future.add_done_callback(self._goal_response_cb)
+
+    def _goal_response_cb(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn('Goal rejected by Nav2!')
+            self.navigating = False
+            return
+        self.get_logger().info('Goal accepted by Nav2')
+        # NOTE: result tracking added in a follow-up commit
 
 
 def main(args=None):
