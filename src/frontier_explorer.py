@@ -12,6 +12,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
+from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
 
 
@@ -181,7 +182,17 @@ class FrontierExplorer(Node):
             self.navigating = False
             return
         self.get_logger().info('Goal accepted by Nav2')
-        # NOTE: result tracking added in a follow-up commit
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._goal_result_cb)
+
+    def _goal_result_cb(self, future):
+        result = future.result()
+        status = result.status
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info('Goal reached successfully!')
+        else:
+            self.get_logger().warn(f'Goal finished with status {status}')
+        self.navigating = False
 
 
 def main(args=None):
