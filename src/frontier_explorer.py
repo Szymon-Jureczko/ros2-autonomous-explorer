@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Frontier Explorer — Nav2 integration: send NavigateToPose goals."""
+"""Frontier Explorer — Nav2 integration with blacklist for failed goals."""
 
 import math
 from collections import deque
@@ -12,8 +12,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
-from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
+from action_msgs.msg import GoalStatus
 
 
 FREE = 0
@@ -22,6 +22,8 @@ LETHAL = 100
 
 MIN_FRONTIER_SIZE = 3
 REPLAN_INTERVAL = 4.0
+BLACKLIST_RADIUS = 0.8
+MAX_BLACKLIST_SIZE = 50
 
 
 class FrontierExplorer(Node):
@@ -30,12 +32,16 @@ class FrontierExplorer(Node):
 
         self.declare_parameter('min_frontier_size', MIN_FRONTIER_SIZE)
         self.declare_parameter('replan_interval', REPLAN_INTERVAL)
+        self.declare_parameter('blacklist_radius', BLACKLIST_RADIUS)
         self.min_frontier_size = self.get_parameter('min_frontier_size').value
         self.replan_interval = self.get_parameter('replan_interval').value
+        self.blacklist_radius = self.get_parameter('blacklist_radius').value
 
         self.slam_map = None
         self.robot_pose = None
+        self.blacklisted_goals = []
         self.navigating = False
+        self.current_goal = None
 
         map_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -91,6 +97,8 @@ class FrontierExplorer(Node):
 
         goal = self._select_frontier(clusters)
         if goal is None:
+            self.get_logger().warn('All frontiers blacklisted, clearing blacklist.')
+            self.blacklisted_goals.clear()
             return
         self._send_goal(goal)
 
@@ -147,11 +155,19 @@ class FrontierExplorer(Node):
             cx = sum(p[0] for p in frontier) / len(frontier)
             cy = sum(p[1] for p in frontier) / len(frontier)
             dist = math.hypot(cx - rx, cy - ry)
+            if self._is_blacklisted(cx, cy):
+                continue
             score = len(frontier) / (dist + 0.1)
             if score > best_score:
                 best_score = score
                 best = (cx, cy)
         return best
+
+    def _is_blacklisted(self, x, y):
+        for bx, by in self.blacklisted_goals:
+            if math.hypot(x - bx, y - by) < self.blacklist_radius:
+                return True
+        return False
 
     def _send_goal(self, goal_xy):
         x, y = goal_xy
@@ -172,6 +188,7 @@ class FrontierExplorer(Node):
         goal_msg.pose.pose.orientation.w = qw
 
         self.navigating = True
+        self.current_goal = goal_xy
         future = self.nav_client.send_goal_async(goal_msg)
         future.add_done_callback(self._goal_response_cb)
 
@@ -179,6 +196,7 @@ class FrontierExplorer(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().warn('Goal rejected by Nav2!')
+            self._blacklist_current_goal()
             self.navigating = False
             return
         self.get_logger().info('Goal accepted by Nav2')
@@ -191,8 +209,16 @@ class FrontierExplorer(Node):
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info('Goal reached successfully!')
         else:
-            self.get_logger().warn(f'Goal finished with status {status}')
+            self.get_logger().warn(f'Goal failed with status {status}, blacklisting.')
+            self._blacklist_current_goal()
         self.navigating = False
+        self.current_goal = None
+
+    def _blacklist_current_goal(self):
+        if self.current_goal:
+            self.blacklisted_goals.append(self.current_goal)
+            if len(self.blacklisted_goals) > MAX_BLACKLIST_SIZE:
+                self.blacklisted_goals.pop(0)
 
 
 def main(args=None):
