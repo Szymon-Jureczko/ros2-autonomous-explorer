@@ -76,7 +76,7 @@ The project is fully containerized — **no local ROS installation is required**
 - All Nav2, Gazebo, SLAM Toolbox and bridge packages
 - A **TigerVNC** server (port `5901`) for a remote desktop
 - A **noVNC** web proxy (port `6080`) so the desktop is accessible from any browser
-- A **Fluxbox** window manager
+- An **XFCE4** window manager
 - A `start-vnc.sh` startup script that wires everything together
 
 `docker-compose.yml` defines two services:
@@ -89,7 +89,7 @@ The project is fully containerized — **no local ROS installation is required**
 ```
  Host machine
  └─── Docker container (ros2_dev)
-      ├── Fluxbox desktop (DISPLAY :1)
+      ├── XFCE4 desktop (DISPLAY :1)
       │    ├── Gazebo Harmonic window
       │    └── RViz2 window
       ├── TigerVNC server :5901  ──────── native VNC client
@@ -124,13 +124,17 @@ The repo ships a `Dockerfile` and `docker-compose.yml` that provide a complete R
 ```bash
 git clone https://github.com/Szymon-Jureczko/ros2-autonomous-explorer.git
 cd ros2-autonomous-explorer
-docker compose up dev
+docker compose build dev
+docker compose up -d dev
 ```
 
+> **Note:** Use `docker compose up -d dev` (detached mode). Running without `-d` launches
+> an interactive TUI that captures keypresses and prevents typing in the terminal.
+
 This starts:
-- A **TigerVNC** server on port `5901`
+- A **TigerVNC** server on port `5901` (display `:1`)
 - A **noVNC** web client on port `6080`
-- A **Fluxbox** desktop environment
+- An **XFCE4** desktop environment
 
 #### Open the desktop
 
@@ -140,15 +144,26 @@ Open your browser and go to:
 http://localhost:6080/vnc.html
 ```
 
-You'll see the Fluxbox desktop. Right-click for a terminal.
+Click **Connect**. When prompted, enter the VNC password.
 
 > **VNC password:** `password`
 >
 > You can also connect a native VNC client to `localhost:5901`.
 
-#### Build and launch inside the container
+> **Port conflict:** If port `6080` is already in use (e.g. by a VS Code dev container),
+> edit `docker-compose.yml` and change `"6080:6080"` to e.g. `"7080:6080"`, then access
+> noVNC at `http://localhost:7080/vnc.html`.
 
-Open a terminal in the noVNC desktop (or `docker exec -it ros2_dev bash`) and run:
+#### Build and launch
+
+The recommended way is `docker exec` from your host terminal — you get full copy/paste
+and don't need to use the noVNC desktop terminal:
+
+```bash
+docker exec -it ros2_dev bash
+```
+
+Then inside the container:
 
 ```bash
 cd /workspaces/ros2_ws

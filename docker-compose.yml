@@ -1,7 +1,9 @@
-version: '3.8'
-
 services:
   # Development mode with VNC desktop
+  # Run with: docker compose up -d dev
+  # noVNC desktop: http://localhost:6080/vnc.html  password: password
+  # If port 6080 is already in use (e.g. a VS Code dev container), change the
+  # host-side port: "7080:6080" and use http://localhost:7080/vnc.html instead.
   dev:
     build:
       context: .
@@ -17,16 +19,16 @@ services:
       - ROS_DOMAIN_ID=0
       - VNC_RESOLUTION=1920x1080
     ports:
-      - "6080:6080"   # noVNC web client
-      - "5901:5901"   # VNC direct
+      - "6080:6080"   # noVNC web client → http://localhost:6080/vnc.html
+      - "5901:5901"   # VNC direct (display :1)
     volumes:
       - .:/workspaces/ros2_ws:cached
     working_dir: /workspaces/ros2_ws
     stdin_open: true
     tty: true
     command: >
-      bash -c "start-vnc.sh && 
-               echo 'GUI available at http://localhost:6080' &&
+      bash -c "start-vnc.sh &&
+               echo 'noVNC desktop available at http://localhost:6080/vnc.html (password: password)' &&
                bash"
 
   # Headless CI/testing mode

@@ -29,9 +29,9 @@ RUN apt-get update && apt-get install -y \
 # Set up environment
 ENV TURTLEBOT3_MODEL=waffle
 ENV GAZEBO_MODEL_PATH=/opt/ros/jazzy/share/turtlebot3_gazebo/models
-ENV DISPLAY=:2
+ENV DISPLAY=:1
 ENV VNC_RESOLUTION=1920x1080
-ENV VNC_PORT=5902
+ENV VNC_PORT=5901
 ENV NOVNC_PORT=6080
 
 # Source ROS in all bash shells
@@ -45,19 +45,20 @@ FROM base AS dev
 
 WORKDIR /workspaces/ros2_ws
 
-# Create VNC startup script (compatible with desktop-lite feature)
+# Create VNC startup script and set password non-interactively
 RUN mkdir -p /root/.vnc && \
-    printf '#!/bin/bash\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexec /usr/bin/fluxbox\n' > /root/.vnc/xstartup && \
-    chmod +x /root/.vnc/xstartup
+    printf '#!/bin/bash\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexec startxfce4\n' > /root/.vnc/xstartup && \
+    chmod +x /root/.vnc/xstartup && \
+    printf 'password\npassword\nn\n' | vncpasswd
 
 # Create script to start VNC and noVNC
 COPY <<'EOF' /usr/local/bin/start-vnc.sh
 #!/bin/bash
 # Kill any existing VNC sessions
-vncserver -kill :2 2>/dev/null || true
+vncserver -kill :1 2>/dev/null || true
 
 # Start VNC server
-vncserver :2 -geometry ${VNC_RESOLUTION} -depth 24
+vncserver :1 -geometry ${VNC_RESOLUTION} -depth 24 -localhost no
 
 # Start noVNC (web-based VNC client)
 /usr/share/novnc/utils/novnc_proxy --vnc localhost:${VNC_PORT} --listen ${NOVNC_PORT} &
