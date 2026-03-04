@@ -4,13 +4,17 @@ A fully autonomous frontier-based exploration system built with **ROS 2 Jazzy**,
 
 ![ROS 2](https://img.shields.io/badge/ROS_2-Jazzy-blue)
 ![Gazebo](https://img.shields.io/badge/Gazebo-Harmonic-orange)
+![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-Apache_2.0-green)
 
 ## Overview
 
-The system drops a differential-drive robot into a **20×15 m five-room apartment** in Gazebo and lets it explore completely on its own. No teleoperation, no pre-built map, no waypoints — just launch and watch.
+The system drops a differential-drive robot into a **20×15 m five-room apartment** in Gazebo and lets it explore completely on its own. No teleoperation, no pre-built map, no waypoints — just `docker compose up` and watch.
+
+The entire stack — ROS 2 Jazzy, Gazebo Harmonic, Nav2, SLAM Toolbox, and a full desktop GUI — runs inside a **Docker container**. A built-in noVNC server makes Gazebo and RViz2 accessible from any web browser with zero local installation. This makes the project fully portable: it runs identically on any Linux, macOS, or Windows machine that has Docker.
 
 **Key capabilities:**
+- Zero-install dev environment via Docker + noVNC browser desktop
 - BFS-based frontier detection on the live SLAM occupancy grid
 - Frontier scoring by size-to-distance ratio (prefers large, nearby frontiers)
 - 60-second navigation timeout with automatic goal cancellation
@@ -62,6 +66,39 @@ The system drops a differential-drive robot into a **20×15 m five-room apartmen
 | **Navigation** | Nav2 | MPPI controller, NavFn planner (allow_unknown: true) |
 | **Language** | Python 3 | Single frontier explorer node (~460 lines) |
 | **Bridge** | ros_gz_bridge | Bidirectional Gazebo ↔ ROS 2 transport |
+| **Container** | Docker + docker-compose | Dev and CI services |
+| **Desktop** | TigerVNC + noVNC + Fluxbox | Browser-accessible GUI on port 6080 |
+
+## Containerization
+
+The project is fully containerized — **no local ROS installation is required**. The `Dockerfile` builds on `osrf/ros:jazzy-desktop` and layers in:
+
+- All Nav2, Gazebo, SLAM Toolbox and bridge packages
+- A **TigerVNC** server (port `5901`) for a remote desktop
+- A **noVNC** web proxy (port `6080`) so the desktop is accessible from any browser
+- A **Fluxbox** window manager
+- A `start-vnc.sh` startup script that wires everything together
+
+`docker-compose.yml` defines two services:
+
+| Service | Purpose | GUI |
+|---------|---------|-----|
+| `dev` | Interactive development — workspace mounted as a volume, VNC desktop started automatically | noVNC on port 6080 |
+| `ci` | Headless CI/testing — builds the workspace and launches in `headless:=true rviz:=false` mode | None |
+
+```
+ Host machine
+ └─── Docker container (ros2_dev)
+      ├── Fluxbox desktop (DISPLAY :1)
+      │    ├── Gazebo Harmonic window
+      │    └── RViz2 window
+      ├── TigerVNC server :5901  ──────── native VNC client
+      └── noVNC websocket :6080  ──────── http://localhost:6080/vnc.html
+```
+
+Because Gazebo's ogre2 renderer needs OpenGL, the launch file applies Mesa software-rendering environment variables scoped only to RViz2, while Gazebo uses Mesa's ogre2 backend directly — keeping them compatible without a GPU.
+
+---
 
 **Nav2 nodes (minimal set — no unused servers):**
 - `controller_server` (MPPI)
@@ -72,15 +109,73 @@ The system drops a differential-drive robot into a **20×15 m five-room apartmen
 - `collision_monitor`
 - `bt_navigator`
 
-## Prerequisites
+## Running
 
-- **ROS 2 Jazzy** (desktop or base install)
-- **Gazebo Harmonic** (`ros-jazzy-ros-gz`)
-- **Nav2** (`ros-jazzy-navigation2`, `ros-jazzy-nav2-bringup`)
-- **SLAM Toolbox** (`ros-jazzy-slam-toolbox`)
-- **ros_gz_bridge** (`ros-jazzy-ros-gz-bridge`)
+There are two ways to run this project: **inside the provided dev container** (recommended — no install required) or **natively on Ubuntu 24.04**.
 
-Install all dependencies on Ubuntu 24.04:
+---
+
+### Option 1 — Dev Container + noVNC (recommended)
+
+The repo ships a `Dockerfile` and `docker-compose.yml` that provide a complete ROS 2 Jazzy + Gazebo + Nav2 environment with a **noVNC desktop** for GUI access. No local ROS installation needed.
+
+#### Start the container
+
+```bash
+git clone https://github.com/Szymon-Jureczko/ros2-autonomous-explorer.git
+cd ros2-autonomous-explorer
+docker compose up dev
+```
+
+This starts:
+- A **TigerVNC** server on port `5901`
+- A **noVNC** web client on port `6080`
+- A **Fluxbox** desktop environment
+
+#### Open the desktop
+
+Open your browser and go to:
+
+```
+http://localhost:6080/vnc.html
+```
+
+You'll see the Fluxbox desktop. Right-click for a terminal.
+
+> **VNC password:** `password`
+>
+> You can also connect a native VNC client to `localhost:5901`.
+
+#### Build and launch inside the container
+
+Open a terminal in the noVNC desktop (or `docker exec -it ros2_dev bash`) and run:
+
+```bash
+cd /workspaces/ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --packages-select autonomous_explorer
+source install/setup.bash
+ros2 launch autonomous_explorer auto_explore.launch.py
+```
+
+Gazebo and RViz2 windows will appear on the noVNC desktop.
+
+#### Headless CI mode (no GUI)
+
+```bash
+docker compose up ci
+```
+
+This builds and launches with `headless:=true rviz:=false` automatically.
+
+---
+
+### Option 2 — Native Ubuntu 24.04
+
+#### Prerequisites
+
+- **ROS 2 Jazzy** (desktop install)
+- **Gazebo Harmonic**, **Nav2**, **SLAM Toolbox**, **ros_gz_bridge**
 
 ```bash
 sudo apt update && sudo apt install -y \
@@ -92,36 +187,35 @@ sudo apt update && sudo apt install -y \
   ros-jazzy-tf2-ros
 ```
 
-## Building
+#### Build
 
 ```bash
-# Clone into your ROS 2 workspace
 cd ~/ros2_ws/src
 git clone https://github.com/Szymon-Jureczko/ros2-autonomous-explorer.git
-
-# Build
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install --packages-select autonomous_explorer
 source install/setup.bash
 ```
 
-## Launching
+#### Launch
 
 **Full stack (Gazebo GUI + RViz2):**
 ```bash
 ros2 launch autonomous_explorer auto_explore.launch.py
 ```
 
-**Headless (no Gazebo GUI):**
+**Headless (no Gazebo GUI, keep RViz2):**
 ```bash
 ros2 launch autonomous_explorer auto_explore.launch.py headless:=true
 ```
 
-**Headless, no RViz2 (CI / SSH):**
+**Fully headless (CI / SSH):**
 ```bash
 ros2 launch autonomous_explorer auto_explore.launch.py headless:=true rviz:=false
 ```
+
+---
 
 ### Launch Arguments
 
@@ -142,6 +236,8 @@ ros2 launch autonomous_explorer auto_explore.launch.py headless:=true rviz:=fals
 
 ```
 autonomous_explorer/
+├── Dockerfile                        # Multi-stage image (base → dev → production)
+├── docker-compose.yml                # dev (noVNC GUI) and ci (headless) services
 ├── CMakeLists.txt                    # Build config (Python-only install)
 ├── package.xml                       # ROS 2 package manifest
 ├── README.md
