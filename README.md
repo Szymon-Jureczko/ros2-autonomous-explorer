@@ -9,6 +9,8 @@ A fully autonomous frontier-based exploration system built with **ROS 2 Jazzy**,
 
 ## Overview
 
+https://github.com/user-attachments/assets/02ae595e-0e4e-4193-83b2-f0638b869e9c
+
 The system drops a differential-drive robot into a **20×15 m five-room apartment** in Gazebo and lets it explore completely on its own. No teleoperation, no pre-built map, no waypoints — just `docker compose up` and watch.
 
 The entire stack — ROS 2 Jazzy, Gazebo Harmonic, Nav2, SLAM Toolbox, and a full desktop GUI — runs inside a **Docker container**. A built-in noVNC server makes Gazebo and RViz2 accessible from any web browser with zero local installation. This makes the project fully portable: it runs identically on any Linux, macOS, or Windows machine that has Docker.
