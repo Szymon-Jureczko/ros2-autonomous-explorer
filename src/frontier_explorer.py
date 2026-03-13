@@ -2,6 +2,7 @@
 """Frontier Explorer — Nav2 integration with blacklist for failed goals."""
 
 import math
+import time
 from collections import deque
 import numpy as np
 
@@ -14,6 +15,7 @@ from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
 from action_msgs.msg import GoalStatus
+from rosgraph_msgs.msg import Clock
 
 
 FREE = 0
@@ -42,6 +44,12 @@ class FrontierExplorer(Node):
         self.blacklisted_goals = []
         self.navigating = False
         self.current_goal = None
+        self.clock_ok = False
+        self.last_clock_time = None
+
+        # Verify sim-time before proceeding
+        self.clock_sub = self.create_subscription(
+            Clock, '/clock', self._clock_cb, 10)
 
         map_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -57,10 +65,28 @@ class FrontierExplorer(Node):
         self._setup_tf()
 
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-        self.get_logger().info('Waiting for Nav2 navigate_to_pose action server...')
+
+        # Wait for /clock first, then connect to Nav2
+        self.get_logger().info('Waiting for /clock to confirm sim-time is active...')
+        self._clock_check_timer = self.create_timer(2.0, self._check_clock_health)
+
+    def _clock_cb(self, msg):
+        self.last_clock_time = time.monotonic()
+        if not self.clock_ok:
+            self.clock_ok = True
+            self.get_logger().info('/clock is being published — sim-time OK')
+
+    def _check_clock_health(self):
+        if not self.clock_ok:
+            self.get_logger().warn('/clock not yet received — bridge may not be ready')
+            return
+        if self.last_clock_time and (time.monotonic() - self.last_clock_time) > 5.0:
+            self.get_logger().error('/clock appears stale (>5s since last msg)')
+            return
+        self._clock_check_timer.cancel()
+        self.get_logger().info('Clock health OK. Waiting for Nav2 action servers...')
         self.nav_client.wait_for_server()
         self.get_logger().info('Nav2 action server connected!')
-
         self.timer = self.create_timer(self.replan_interval, self._explore_tick)
 
     def _setup_tf(self):
