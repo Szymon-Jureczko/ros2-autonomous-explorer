@@ -12,7 +12,7 @@ from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import NavigateToPose, Spin
 from geometry_msgs.msg import PoseStamped
 from action_msgs.msg import GoalStatus
 from rosgraph_msgs.msg import Clock
@@ -44,6 +44,8 @@ class FrontierExplorer(Node):
         self.blacklisted_goals = []
         self.navigating = False
         self.current_goal = None
+        self.spinning = False
+        self.initial_spin_done = False
         self.clock_ok = False
         self.last_clock_time = None
 
@@ -65,6 +67,7 @@ class FrontierExplorer(Node):
         self._setup_tf()
 
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.spin_client = ActionClient(self, Spin, 'spin')
 
         # Wait for /clock first, then connect to Nav2
         self.get_logger().info('Waiting for /clock to confirm sim-time is active...')
@@ -86,7 +89,37 @@ class FrontierExplorer(Node):
         self._clock_check_timer.cancel()
         self.get_logger().info('Clock health OK. Waiting for Nav2 action servers...')
         self.nav_client.wait_for_server()
-        self.get_logger().info('Nav2 action server connected!')
+        self.spin_client.wait_for_server()
+        self.get_logger().info('Nav2 action servers connected!')
+        # Initial 360° spin to seed the SLAM map before exploration starts
+        self._do_nav2_spin(6.28, self._initial_spin_done_cb)
+
+    def _do_nav2_spin(self, angle_rad, done_callback):
+        spin_goal = Spin.Goal()
+        spin_goal.target_yaw = angle_rad
+        self.spinning = True
+        future = self.spin_client.send_goal_async(spin_goal)
+        future.add_done_callback(
+            lambda f: self._spin_accepted_cb(f, done_callback))
+
+    def _spin_accepted_cb(self, future, done_callback):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.spinning = False
+            self.get_logger().warn('Spin goal rejected.')
+            return
+        self.get_logger().info('Spin goal accepted, rotating...')
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(lambda f: self._spin_result_cb(f, done_callback))
+
+    def _spin_result_cb(self, future, done_callback):
+        self.spinning = False
+        self.get_logger().info('Spin complete!')
+        done_callback()
+
+    def _initial_spin_done_cb(self):
+        self.initial_spin_done = True
+        self.get_logger().info('Initial spin done — starting frontier exploration timer.')
         self.timer = self.create_timer(self.replan_interval, self._explore_tick)
 
     def _setup_tf(self):
@@ -111,6 +144,10 @@ class FrontierExplorer(Node):
         if pos is None:
             return
         self.robot_pose = pos
+
+        if self.spinning:
+            self.get_logger().info('Spin in progress, waiting...')
+            return
 
         if self.navigating:
             self.get_logger().info('Navigation in progress, waiting...')
