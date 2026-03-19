@@ -91,7 +91,17 @@ class FrontierExplorer(Node):
         self.nav_client.wait_for_server()
         self.spin_client.wait_for_server()
         self.get_logger().info('Nav2 action servers connected!')
-        # Initial 360° spin to seed the SLAM map before exploration starts
+        # Wait for Nav2 lifecycle nodes to become active before sending goals
+        self._spin_retries = 0
+        self.get_logger().info('Waiting for Nav2 lifecycle activation...')
+        self.create_timer(3.0, self._try_initial_spin)
+
+    def _try_initial_spin(self):
+        if self.initial_spin_done:
+            return
+        self._spin_retries += 1
+        self.get_logger().info(
+            f'Attempting initial 360° spin (attempt {self._spin_retries})...')
         self._do_nav2_spin(6.28, self._initial_spin_done_cb)
 
     def _do_nav2_spin(self, angle_rad, done_callback):
@@ -106,8 +116,14 @@ class FrontierExplorer(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.spinning = False
-            self.get_logger().warn('Spin goal rejected.')
-            return
+            if done_callback == self._initial_spin_done_cb:
+                self.get_logger().warn(
+                    'Spin goal rejected (behavior_server not active yet), '
+                    'will retry in 3s...')
+                return
+            else:
+                self.get_logger().warn('Recovery spin rejected.')
+                return
         self.get_logger().info('Spin goal accepted, rotating...')
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(lambda f: self._spin_result_cb(f, done_callback))
