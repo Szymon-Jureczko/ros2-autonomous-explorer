@@ -44,6 +44,8 @@ class FrontierExplorer(Node):
         self.blacklisted_goals = []
         self.navigating = False
         self.current_goal = None
+        self.current_goal_handle = None
+        self.nav_start_time = None
         self.spinning = False
         self.initial_spin_done = False
         self.clock_ok = False
@@ -166,7 +168,14 @@ class FrontierExplorer(Node):
             return
 
         if self.navigating:
-            self.get_logger().info('Navigation in progress, waiting...')
+            elapsed = time.monotonic() - self.nav_start_time if self.nav_start_time else 0
+            if elapsed > 60.0:
+                self.get_logger().warn(
+                    f'Navigation goal timed out after {elapsed:.0f}s — cancelling & blacklisting.')
+                self._cancel_current_goal()
+                return
+            self.get_logger().info(
+                f'Navigation in progress ({elapsed:.0f}s elapsed), waiting...')
             return
 
         clusters = self._find_frontiers()
@@ -268,6 +277,8 @@ class FrontierExplorer(Node):
 
         self.navigating = True
         self.current_goal = goal_xy
+        self.current_goal_handle = None
+        self.nav_start_time = time.monotonic()
         future = self.nav_client.send_goal_async(goal_msg)
         future.add_done_callback(self._goal_response_cb)
 
@@ -278,20 +289,39 @@ class FrontierExplorer(Node):
             self._blacklist_current_goal()
             self.navigating = False
             return
+        self.current_goal_handle = goal_handle
         self.get_logger().info('Goal accepted by Nav2')
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._goal_result_cb)
 
+    def _cancel_current_goal(self):
+        if self.current_goal_handle is not None:
+            self.get_logger().info('Cancelling current Nav2 goal...')
+            self.current_goal_handle.cancel_goal_async()
+        self._blacklist_current_goal()
+        self.navigating = False
+        self.current_goal = None
+        self.current_goal_handle = None
+        self.nav_start_time = None
+
     def _goal_result_cb(self, future):
         result = future.result()
         status = result.status
+
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info('Goal reached successfully!')
+        elif status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().info('Goal was cancelled.')
         else:
             self.get_logger().warn(f'Goal failed with status {status}, blacklisting.')
             self._blacklist_current_goal()
+
         self.navigating = False
         self.current_goal = None
+        self.current_goal_handle = None
+        self.nav_start_time = None
+        self.current_goal_handle = None
+        self.nav_start_time = None
 
     def _blacklist_current_goal(self):
         if self.current_goal:
