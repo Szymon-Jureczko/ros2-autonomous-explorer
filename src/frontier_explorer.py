@@ -178,9 +178,12 @@ class FrontierExplorer(Node):
                 f'Navigation in progress ({elapsed:.0f}s elapsed), waiting...')
             return
 
+        # Detect frontiers from SLAM map
         clusters = self._find_frontiers()
         if not clusters:
-            self.get_logger().info('No frontiers detected')
+            # Do a small rotation to reveal more map
+            self.get_logger().info('No frontiers found — spinning to reveal more...')
+            self._do_nav2_spin(3.14, lambda: None)  # 180° recovery spin
             return
 
         goal = self._select_frontier(clusters)
