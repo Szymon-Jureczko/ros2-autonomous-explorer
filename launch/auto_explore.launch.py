@@ -213,9 +213,9 @@ def generate_launch_description():
                 output='screen',
                 parameters=[{
                     'use_sim_time': True,
-                    'min_frontier_size': 3,
-                    'replan_interval': 4.0,
-                    'blacklist_radius': 0.8,
+                    'min_frontier_size': 5,
+                    'replan_interval': 5.0,
+                    'blacklist_radius': 1.0,
                 }]
             )
         ]
