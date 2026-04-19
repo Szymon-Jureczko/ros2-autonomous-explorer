@@ -1,0 +1,49 @@
+services:
+  # Development mode with a TigerVNC desktop for GUI apps (Gazebo, RViz)
+  # Run with: docker compose up -d dev
+  # Connect a VNC client to localhost:5901 (password: password).
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    image: autonomous_explorer:dev
+    container_name: ros2_dev
+    privileged: true
+    shm_size: '512m'
+    environment:
+      - DISPLAY=:1
+      - TURTLEBOT3_MODEL=waffle
+      - ROS_DOMAIN_ID=0
+      - VNC_RESOLUTION=1920x1080
+    ports:
+      - "5901:5901"
+    volumes:
+      - .:/workspaces/ros2_ws:cached
+    working_dir: /workspaces/ros2_ws
+    stdin_open: true
+    tty: true
+    command: >
+      bash -c "vncserver :1 -geometry $${VNC_RESOLUTION} -depth 24 -localhost no &&
+               echo 'VNC desktop on localhost:5901 (password: password)' &&
+               bash"
+
+  # Headless CI/testing mode
+  ci:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    image: autonomous_explorer:dev
+    container_name: ros2_ci
+    environment:
+      - TURTLEBOT3_MODEL=waffle
+      - ROS_DOMAIN_ID=0
+    volumes:
+      - .:/workspaces/ros2_ws:cached
+    working_dir: /workspaces/ros2_ws
+    command: >
+      bash -c "source /opt/ros/jazzy/setup.bash &&
+               colcon build --symlink-install &&
+               source install/setup.bash &&
+               ros2 launch autonomous_explorer auto_explore.launch.py headless:=true rviz:=false"
