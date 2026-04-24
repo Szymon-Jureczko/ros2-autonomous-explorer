@@ -242,7 +242,7 @@ ros2 launch autonomous_explorer auto_explore.launch.py headless:=true rviz:=fals
 ### What to Expect
 
 1. Gazebo opens with the apartment world
-2. After 40 seconds the robot begins a 360° spin to seed the SLAM map
+2. After a few seconds the robot begins a 360° spin to seed the SLAM map
 3. The frontier explorer starts detecting and navigating to frontiers
 4. The map progressively fills in as the robot visits each room
 5. When no frontiers remain for 5 consecutive ticks, exploration is declared complete
