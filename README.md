@@ -5,7 +5,7 @@ A fully autonomous frontier-based exploration system built with **ROS 2 Jazzy**,
 ![ROS 2](https://img.shields.io/badge/ROS_2-Jazzy-blue)
 ![Gazebo](https://img.shields.io/badge/Gazebo-Harmonic-orange)
 ![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Overview
 
@@ -315,4 +315,4 @@ All rooms are connected by doorways. The robot starts in the living room at `(-5
 
 ## License
 
-Apache 2.0
+MIT
